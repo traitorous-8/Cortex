@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cortex-core"
+version = "0.1.0"
+description = "Cortex-Core — computer vision pipeline for PPE safety compliance monitoring."
+requires-python = ">=3.9"
+dependencies = [
+    "ultralytics",
+    "numpy",
+]
+
+[project.scripts]
+# Add a project.scripts entry later
