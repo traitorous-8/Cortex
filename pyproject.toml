@@ -10,7 +10,9 @@ requires-python = ">=3.9"
 dependencies = [
     "ultralytics",
     "numpy",
+    "opencv-python",
+    "weasyprint",
 ]
 
 [project.scripts]
-# Add a project.scripts entry later
+cortex-detect = "cortex.cli:main"
