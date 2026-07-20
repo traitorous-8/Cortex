@@ -64,8 +64,23 @@ class Detector:
     @property
     def model(self):
         if self._model is None:
+            import torch
             from ultralytics import YOLO
-            self._model = YOLO(self.weights)
+            import functools
+
+            # Monkeypatch torch.load to always use weights_only=False to support older YOLO weights on PyTorch 2.6+
+            original_torch_load = torch.load
+            @functools.wraps(original_torch_load)
+            def load_with_weights_only_false(*args, **kwargs):
+                kwargs['weights_only'] = False
+                return original_torch_load(*args, **kwargs)
+
+            torch.load = load_with_weights_only_false
+            try:
+                self._model = YOLO(self.weights)
+            finally:
+                torch.load = original_torch_load
+
         return self._model
 
     def detect_frame(self, frame):
