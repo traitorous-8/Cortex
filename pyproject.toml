@@ -11,7 +11,7 @@ dependencies = [
     "ultralytics",
     "numpy",
     "opencv-python",
-    "weasyprint",
+    "fpdf2",
 ]
 
 [project.scripts]
