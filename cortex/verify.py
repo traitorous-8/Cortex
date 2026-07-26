@@ -4,19 +4,6 @@ from cortex.detect import Detection
 from cortex.violation import PersonState
 
 @dataclass
-class TrackState:
-    track_id: int
-    last_box: Detection
-    frames_seen: int
-    frames_missed: int
-    no_helmet_ema: float
-    confirmed: bool
-    violation_start_frame: Optional[int]
-    best_evidence_frame: Optional[int]
-    best_evidence_conf: float
-
-
-@dataclass
 class ConfirmedViolation:
     track_id: int
     kind: str
@@ -28,6 +15,20 @@ class ConfirmedViolation:
     smoothed_confidence: float
     box: Detection
 
+@dataclass
+class TrackState:
+    track_id: int
+    last_box: Detection
+    frames_seen: int
+    frames_missed: int
+    no_helmet_ema: float
+    confirmed: bool
+    violation_start_frame: Optional[int]
+    best_evidence_frame: Optional[int]
+    best_evidence_conf: float
+    last_violation: Optional[ConfirmedViolation] = None
+    last_violation_end_frame: Optional[int] = None
+
 
 class ViolationVerifier:
     def __init__(
@@ -37,8 +38,9 @@ class ViolationVerifier:
         ema_alpha: float = 0.25,
         on_threshold: float = 0.65,
         off_threshold: float = 0.35,
-        iou_match: float = 0.3,
-        max_missed: int = 15
+        iou_match: float = 0.1,  # Decreased IOU match to be more permissive
+        max_missed: int = 15,
+        cooldown_seconds: float = 5.0
     ):
         self.fps = fps
         self.persist_seconds = persist_seconds
@@ -48,6 +50,7 @@ class ViolationVerifier:
         self.off_threshold = off_threshold
         self.iou_match = iou_match
         self.max_missed = max_missed
+        self.cooldown_frames = int(cooldown_seconds * fps)
 
         self.tracks: Dict[int, TrackState] = {}
         self.next_track_id = 0
@@ -60,14 +63,33 @@ class ViolationVerifier:
             best_iou = self.iou_match
             best_track_id = None
 
-            # Find best matching track
+            # 1. Try strict IOU match first
             for track_id, track in self.tracks.items():
                 if track_id in matched_tracks:
                     continue
                 iou = state.person.iou(track.last_box)
+
                 if iou >= best_iou:
                     best_iou = iou
                     best_track_id = track_id
+
+            # 2. If no IOU match found, try spatial fallback
+            if best_track_id is None:
+                best_dist = float('inf')
+                for track_id, track in self.tracks.items():
+                    if track_id in matched_tracks:
+                        continue
+
+                    center_dist_x = abs(state.person.cx - track.last_box.cx)
+                    center_dist_y = abs(state.person.cy - track.last_box.cy)
+                    w = track.last_box.x2 - track.last_box.x1
+                    h = track.last_box.y2 - track.last_box.y1
+
+                    if center_dist_x < w * 1.5 and center_dist_y < h * 1.5:
+                        dist = center_dist_x + center_dist_y
+                        if dist < best_dist:
+                            best_dist = dist
+                            best_track_id = track_id
 
             # Update track or create a new one
             if best_track_id is not None:
@@ -145,6 +167,21 @@ class ViolationVerifier:
 
     def _emit_violation_if_valid(self, track: TrackState, end_frame: int):
         if track.violation_start_frame is not None:
+            # Check if we should merge with the last violation
+            if track.last_violation is not None and track.last_violation_end_frame is not None:
+                frames_since_last = track.violation_start_frame - track.last_violation_end_frame
+                if frames_since_last <= self.cooldown_frames:
+                    # Merge with the last violation
+                    track.last_violation.end_frame = end_frame
+                    track.last_violation.duration_s = (end_frame - track.last_violation.start_frame) / self.fps
+
+                    # Update evidence frame if this one is better
+                    if track.best_evidence_frame is not None:
+                         pass # Could update evidence here if desired
+
+                    track.last_violation_end_frame = end_frame
+                    return
+
             duration_frames = end_frame - track.violation_start_frame
             if duration_frames >= self.persist_frames:
                 start_time_s = track.violation_start_frame / self.fps
@@ -165,6 +202,8 @@ class ViolationVerifier:
                     box=track.last_box
                 )
                 self.confirmed_violations.append(violation)
+                track.last_violation = violation
+                track.last_violation_end_frame = end_frame
 
     def finalize(self, last_frame: int) -> List[ConfirmedViolation]:
         # Emit all remaining confirmed violations
