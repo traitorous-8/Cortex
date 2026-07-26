@@ -16,3 +16,6 @@ dependencies = [
 
 [project.scripts]
 cortex-detect = "cortex.cli:main"
+
+[tool.setuptools]
+packages = ["cortex"]
