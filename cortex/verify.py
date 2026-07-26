@@ -38,8 +38,8 @@ class ViolationVerifier:
         ema_alpha: float = 0.25,
         on_threshold: float = 0.65,
         off_threshold: float = 0.35,
-        iou_match: float = 0.1,  # Decreased IOU match to be more permissive
-        max_missed: int = 15,
+        iou_match: float = 0.05,  # Slightly lower IOU match to be even more permissive
+        max_missed: int = 45,     # Increased to allow longer "coasting"
         cooldown_seconds: float = 5.0
     ):
         self.fps = fps
