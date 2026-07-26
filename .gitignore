@@ -3,3 +3,4 @@ __pycache__/
 *.pt
 evidence/
 report.pdf
+cortex_core.egg-info/
