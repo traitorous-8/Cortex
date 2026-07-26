@@ -89,3 +89,50 @@ def test_detector_flicker():
     # frame 4: helmet -> signal 0.0. EMA = 0.75*0.39 = 0.29
     # Limit of this oscillation is well below 0.65.
     assert len(violations) == 0
+
+def test_single_continuous_violation_with_flickers_and_misses():
+    # 10s at 10 fps -> 100 frames
+    fps = 10
+    verifier = ViolationVerifier(fps=fps, persist_seconds=2.0)
+
+    person = create_mock_person()
+
+    for i in range(100):
+        # Mostly no helmet, but sometimes flickers or misses
+        if i % 10 == 0:
+            # Flicker: helmet detected
+            state = PersonState(person=person, has_helmet=True, helmet_conf=0.9)
+            verifier.update(i, [state])
+        elif i % 15 == 0:
+            # Miss: person not detected
+            verifier.update(i, [])
+        else:
+            # Normal: no helmet
+            state = PersonState(person=person, has_helmet=False, helmet_conf=0.0)
+            verifier.update(i, [state])
+
+    violations = verifier.finalize(100)
+    assert len(violations) == 1
+    assert violations[0].duration_s >= 8.0 # Should cover most of the 10 seconds
+
+def test_single_continuous_violation_with_movements():
+    # 10s at 10 fps -> 100 frames
+    fps = 10
+    verifier = ViolationVerifier(fps=fps, persist_seconds=2.0)
+
+    for i in range(100):
+        # Move person coordinates to trigger center distance fallback
+        x1 = i * 2
+        y1 = i * 2
+        person = create_mock_person(x1=x1, y1=y1, x2=x1+100, y2=y1+100)
+
+        if i % 8 == 0:
+            # Miss: person not detected
+            verifier.update(i, [])
+        else:
+            # Normal: no helmet
+            state = PersonState(person=person, has_helmet=False, helmet_conf=0.0)
+            verifier.update(i, [state])
+
+    violations = verifier.finalize(100)
+    assert len(violations) == 1
