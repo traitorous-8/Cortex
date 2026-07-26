@@ -136,3 +136,29 @@ def test_single_continuous_violation_with_movements():
 
     violations = verifier.finalize(100)
     assert len(violations) == 1
+
+def test_single_continuous_violation_with_extended_occlusion():
+    # 3s present, 1s (10 frames) missing, 3s present.
+    # At 10 fps:
+    # 0-29: present (no helmet)
+    # 30-39: missing
+    # 40-69: present (no helmet)
+    fps = 10
+    verifier = ViolationVerifier(fps=fps, persist_seconds=2.0)
+
+    person = create_mock_person()
+
+    for i in range(30):
+        state = PersonState(person=person, has_helmet=False, helmet_conf=0.0)
+        verifier.update(i, [state])
+
+    for i in range(30, 40):
+        verifier.update(i, [])
+
+    for i in range(40, 70):
+        state = PersonState(person=person, has_helmet=False, helmet_conf=0.0)
+        verifier.update(i, [state])
+
+    violations = verifier.finalize(70)
+    assert len(violations) == 1
+    assert violations[0].duration_s >= 6.0 # 7.0 seconds total, but some might be lost to coasting start/end
